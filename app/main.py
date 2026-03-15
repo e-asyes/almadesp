@@ -276,10 +276,25 @@ async function initApp(){
     document.getElementById('btnLogin').style.display='none';
     populatePorts('fPuerto');populatePorts('rPuerto');populatePorts('gPuerto');
     await loadAlmacenesList();
+    await checkAduanaEnabled();
   }catch(e){
     console.error('Keycloak init failed',e);
     document.getElementById('btnLogin').style.display='inline-block';
   }
+}
+
+async function checkAduanaEnabled(){
+  try{
+    const r=await authFetch('/almacen/config');
+    const cfg=await r.json();
+    if(!cfg.aduana_enabled){
+      document.querySelectorAll('.tab').forEach(t=>{if(t.textContent.trim()==='Consulta Aduana'){t.style.display='none';}});
+      document.getElementById('panel-consulta').classList.remove('active');
+      document.querySelectorAll('.tab').forEach(t=>{if(t.textContent.trim()==='Registros Guardados'){t.classList.add('active');}});
+      document.getElementById('panel-registros').classList.add('active');
+      loadRecords();
+    }
+  }catch(e){console.error('Config check failed',e);}
 }
 
 function doLogin(){

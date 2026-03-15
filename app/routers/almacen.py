@@ -1,5 +1,6 @@
 import io
 import logging
+import os
 import re
 from datetime import datetime, date
 from decimal import Decimal, InvalidOperation
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/almacen", tags=["almacen"])
 
 ADUANA_URL = "https://isidora.aduana.cl/WebManifiestoMaritimo/Consultas/CON_BlsxMFTO.jsp?Action=Event"
+ADUANA_ENABLED = os.environ.get("ADUANA_ENABLED", "true").lower() in ("true", "1", "yes")
 
 
 # --- Response models ---
@@ -337,6 +339,12 @@ def _split_bl_queries(bl: str) -> list[str]:
 
 # --- Endpoint ---
 
+@router.get("/config")
+async def get_config(current_user: TokenPayload = Depends(get_current_user)):
+    """Return frontend configuration flags."""
+    return {"aduana_enabled": ADUANA_ENABLED}
+
+
 @router.get("/despacho/{despacho}", response_model=AlmacenLookupResponse)
 async def lookup_almacen_by_despacho(
     despacho: str,
@@ -345,6 +353,8 @@ async def lookup_almacen_by_despacho(
     current_user: TokenPayload = Depends(get_current_user),
 ):
     """Look up Almacen info from Aduana by despacho number and save to manifiesto_bl."""
+    if not ADUANA_ENABLED:
+        raise HTTPException(status_code=503, detail="Consulta Aduana no disponible desde este servidor (IP no chilena)")
     despacho = despacho.strip()
 
     # 1. Get BL number from archimp
@@ -861,6 +871,8 @@ async def batch_update_by_port(
     current_user: TokenPayload = Depends(get_current_user),
 ):
     """Batch update almacen data from Aduana for all despachos arriving at a port in a date range."""
+    if not ADUANA_ENABLED:
+        raise HTTPException(status_code=503, detail="Consulta Aduana no disponible desde este servidor (IP no chilena)")
     port_filter = "AND TRIM(pto_desembarque) = :puerto" if puerto.strip() else ""
     query = text(f"""
         SELECT despacho, numero_conocimiento, TRIM(pto_desembarque) as puerto,
