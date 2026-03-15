@@ -342,6 +342,7 @@ async def lookup_almacen_by_despacho(
     despacho: str,
     db: AsyncSession = Depends(get_db),
     siscon_db: AsyncSession = Depends(get_siscon_db),
+    current_user: TokenPayload = Depends(get_current_user),
 ):
     """Look up Almacen info from Aduana by despacho number and save to manifiesto_bl."""
     despacho = despacho.strip()
@@ -375,6 +376,7 @@ async def lookup_almacen_by_despacho(
 @router.get("/all", response_model=list[ManifiestoBLResponse])
 async def list_all(
     db: AsyncSession = Depends(get_db),
+    current_user: TokenPayload = Depends(get_current_user),
 ):
     """List all manifiesto_bl records."""
     result = await db.execute(
@@ -384,7 +386,7 @@ async def list_all(
 
 
 @router.get("/almacenes-list")
-async def list_almacenes(db: AsyncSession = Depends(get_db)):
+async def list_almacenes(db: AsyncSession = Depends(get_db), current_user: TokenPayload = Depends(get_current_user)):
     """Return almacenes from the almacen_maestro table."""
     result = await db.execute(text("SELECT id, nombre, puerto FROM almacen_maestro ORDER BY nombre"))
     return [{"id": row[0], "nombre": row[1], "puerto": row[2]} for row in result.fetchall()]
@@ -396,7 +398,7 @@ class AlmacenMaestroCreate(BaseModel):
 
 
 @router.get("/almacenes")
-async def list_almacenes_full(db: AsyncSession = Depends(get_db)):
+async def list_almacenes_full(db: AsyncSession = Depends(get_db), current_user: TokenPayload = Depends(get_current_user)):
     """Return all almacenes from master table."""
     result = await db.execute(text("SELECT id, nombre, puerto FROM almacen_maestro ORDER BY nombre"))
     return [{"id": row[0], "nombre": row[1], "puerto": row[2]} for row in result.fetchall()]
@@ -534,6 +536,7 @@ async def list_registros(
     puerto: str = Query(""),
     db: AsyncSession = Depends(get_db),
     siscon_db: AsyncSession = Depends(get_siscon_db),
+    current_user: TokenPayload = Depends(get_current_user),
 ):
     """List all maritime despachos in date range, showing found and not-found."""
     port_filter = "AND TRIM(pto_desembarque) = :puerto" if puerto.strip() else ""
@@ -648,6 +651,7 @@ async def download_registros_excel(
     puerto: str = Query(""),
     db: AsyncSession = Depends(get_db),
     siscon_db: AsyncSession = Depends(get_siscon_db),
+    current_user: TokenPayload = Depends(get_current_user),
 ):
     """Download registros as Excel file."""
     import openpyxl
@@ -781,6 +785,7 @@ async def download_registros_excel(
 async def search_by_bl(
     n_bl: str,
     db: AsyncSession = Depends(get_db),
+    current_user: TokenPayload = Depends(get_current_user),
 ):
     """Search manifiesto_bl records by BL number (partial match)."""
     result = await db.execute(
@@ -830,6 +835,7 @@ class BatchUpdateResponse(BaseModel):
 @router.get("/ports")
 async def list_ports(
     siscon_db: AsyncSession = Depends(get_siscon_db),
+    current_user: TokenPayload = Depends(get_current_user),
 ):
     """List available ports."""
     result = await siscon_db.execute(text("""
@@ -852,6 +858,7 @@ async def batch_update_by_port(
     fecha_hasta: str = Query("2026-03-20", description="Fecha hasta (YYYY-MM-DD)"),
     db: AsyncSession = Depends(get_db),
     siscon_db: AsyncSession = Depends(get_siscon_db),
+    current_user: TokenPayload = Depends(get_current_user),
 ):
     """Batch update almacen data from Aduana for all despachos arriving at a port in a date range."""
     port_filter = "AND TRIM(pto_desembarque) = :puerto" if puerto.strip() else ""

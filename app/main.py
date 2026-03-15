@@ -224,10 +224,19 @@ function switchTab(name){
   if(name==='maestro'&&!maestroLoaded)loadMaestro();
 }
 
+// ── Authenticated fetch helper ──
+async function authFetch(url,opts={}){
+  const token=await getValidToken();
+  if(!token)throw new Error('No autenticado');
+  if(!opts.headers)opts.headers={};
+  opts.headers['Authorization']='Bearer '+token;
+  return fetch(url,opts);
+}
+
 // ── Load ports (shared) ──
 async function populatePorts(selId){
   try{
-    const r=await fetch('/almacen/ports');
+    const r=await authFetch('/almacen/ports');
     const ports=await r.json();
     const sel=document.getElementById(selId);
     ports.forEach(p=>{const o=document.createElement('option');o.value=p.puerto;o.textContent=`${p.puerto} (${p.total})`;sel.appendChild(o)});
@@ -238,7 +247,7 @@ async function populatePorts(selId){
 let almacenesList=[];
 async function loadAlmacenesList(){
   try{
-    const r=await fetch('/almacen/almacenes-list?_t='+Date.now());
+    const r=await authFetch('/almacen/almacenes-list?_t='+Date.now());
     if(!r.ok){console.error('almacenes API error:',r.status,await r.text());almacenesList=[];return;}
     const data=await r.json();
     if(!Array.isArray(data)){console.error('almacenes API returned non-array:',data);almacenesList=[];return;}
@@ -265,12 +274,12 @@ async function initApp(){
     document.getElementById('headerUser').textContent=currentUsername;
     document.getElementById('btnLogout').style.display='inline-block';
     document.getElementById('btnLogin').style.display='none';
+    populatePorts('fPuerto');populatePorts('rPuerto');populatePorts('gPuerto');
+    await loadAlmacenesList();
   }catch(e){
     console.error('Keycloak init failed',e);
     document.getElementById('btnLogin').style.display='inline-block';
   }
-  populatePorts('fPuerto');populatePorts('rPuerto');populatePorts('gPuerto');
-  await loadAlmacenesList();
 }
 
 function doLogin(){
@@ -320,7 +329,7 @@ async function runBatch(){
     document.getElementById('progressFill').style.width='30%';
     document.getElementById('progressText').textContent='Buscando despachos y consultando Aduana...';
 
-    const r=await fetch('/almacen/batch-update?'+params);
+    const r=await authFetch('/almacen/batch-update?'+params);
     const data=await r.json();
 
     document.getElementById('progressFill').style.width='100%';
@@ -392,7 +401,7 @@ async function loadRecords(){
   try{
     const params=new URLSearchParams({fecha_desde:desde,fecha_hasta:hasta});
     if(puerto)params.set('puerto',puerto);
-    const r=await fetch('/almacen/registros?'+params);
+    const r=await authFetch('/almacen/registros?'+params);
     const data=await r.json();
     allRecords=data.items;
     renderRecords();
@@ -436,13 +445,21 @@ function renderRecords(){
       <td>${r.updated_at?new Date(r.updated_at).toLocaleString('es-CL'):'-'}</td></tr>`;
   }).join('');
 }
-function downloadExcel(){
+async function downloadExcel(){
   const desde=document.getElementById('rDesde').value;
   const hasta=document.getElementById('rHasta').value;
   const puerto=document.getElementById('rPuerto').value;
   const params=new URLSearchParams({fecha_desde:desde,fecha_hasta:hasta});
   if(puerto)params.set('puerto',puerto);
-  window.location.href='/almacen/registros/excel?'+params;
+  try{
+    const r=await authFetch('/almacen/registros/excel?'+params);
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;
+    const cd=r.headers.get('content-disposition')||'';
+    const fn=cd.match(/filename=(.+)/)?.[1]||'registros.xlsx';
+    a.download=fn;a.click();URL.revokeObjectURL(url);
+  }catch(e){alert('Error descargando Excel: '+e.message);}
 }
 document.getElementById('search').addEventListener('input',renderRecords);
 document.getElementById('filterStatus').addEventListener('change',renderRecords);
@@ -460,7 +477,7 @@ async function loadGestionRecords(){
     await loadAlmacenesList();
     const params=new URLSearchParams({fecha_desde:desde,fecha_hasta:hasta});
     if(puerto)params.set('puerto',puerto);
-    const r=await fetch('/almacen/registros?'+params);
+    const r=await authFetch('/almacen/registros?'+params);
     const data=await r.json();
     gestionRecords=data.items;
     renderGestion();
@@ -563,13 +580,21 @@ async function saveAlmacenReal(recordId){
   }
 }
 
-function downloadExcelG(){
+async function downloadExcelG(){
   const desde=document.getElementById('gDesde').value;
   const hasta=document.getElementById('gHasta').value;
   const puerto=document.getElementById('gPuerto').value;
   const params=new URLSearchParams({fecha_desde:desde,fecha_hasta:hasta});
   if(puerto)params.set('puerto',puerto);
-  window.location.href='/almacen/registros/excel?'+params;
+  try{
+    const r=await authFetch('/almacen/registros/excel?'+params);
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;
+    const cd=r.headers.get('content-disposition')||'';
+    const fn=cd.match(/filename=(.+)/)?.[1]||'registros.xlsx';
+    a.download=fn;a.click();URL.revokeObjectURL(url);
+  }catch(e){alert('Error descargando Excel: '+e.message);}
 }
 
 document.getElementById('gSearch').addEventListener('input',renderGestion);
@@ -583,7 +608,7 @@ async function loadMaestro(){
   const tbody=document.getElementById('maestroBody');
   tbody.innerHTML='<tr><td colspan="4" class="loading">Cargando</td></tr>';
   try{
-    const r=await fetch('/almacen/almacenes-list?_t='+Date.now());
+    const r=await authFetch('/almacen/almacenes-list?_t='+Date.now());
     maestroData=await r.json();
     maestroLoaded=true;
     renderMaestro();
