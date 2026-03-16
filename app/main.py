@@ -119,8 +119,8 @@ tr:hover td{background:#f8faff}
 </div>
 <div class="tabs">
   <div class="tab active" onclick="switchTab('consulta')">Consulta Aduana</div>
-  <div class="tab" onclick="switchTab('registros')">Registros Guardados</div>
-  <div class="tab" onclick="switchTab('gestion')">Gestion Registros</div>
+  <div class="tab" onclick="switchTab('registros')">Almacenes/Sidemar</div>
+  <div class="tab" onclick="switchTab('gestion')">Actualiza Inscripcion</div>
   <div class="tab" onclick="switchTab('maestro')">Almacenes</div>
 </div>
 <div class="container">
@@ -214,7 +214,7 @@ tr:hover td{background:#f8faff}
 </div>
 <script>
 // ── Tab switching ──
-const tabLabels={'consulta':'Consulta Aduana','registros':'Registros Guardados','gestion':'Gestion Registros','maestro':'Almacenes'};
+const tabLabels={'consulta':'Consulta Aduana','registros':'Almacenes/Sidemar','gestion':'Actualiza Inscripcion','maestro':'Almacenes'};
 function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.textContent.trim()===tabLabels[name]));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
@@ -290,7 +290,7 @@ async function checkAduanaEnabled(){
     if(!cfg.aduana_enabled){
       document.querySelectorAll('.tab').forEach(t=>{if(t.textContent.trim()==='Consulta Aduana'){t.style.display='none';}});
       document.getElementById('panel-consulta').classList.remove('active');
-      document.querySelectorAll('.tab').forEach(t=>{if(t.textContent.trim()==='Registros Guardados'){t.classList.add('active');}});
+      document.querySelectorAll('.tab').forEach(t=>{if(t.textContent.trim()==='Almacenes/Sidemar'){t.classList.add('active');}});
       document.getElementById('panel-registros').classList.add('active');
       loadRecords();
     }
