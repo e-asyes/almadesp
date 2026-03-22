@@ -244,10 +244,13 @@ async def _save_manifests_to_db(
             if not bl.n_bl:
                 continue
 
-            # Check if a record with the same n_bl already exists
+            # Check if a record with the same despacho + n_bl already exists
             existing = (
                 await db.execute(
-                    select(ManifiestoBL).where(ManifiestoBL.n_bl == bl.n_bl)
+                    select(ManifiestoBL).where(
+                        ManifiestoBL.despacho == despacho,
+                        ManifiestoBL.n_bl == bl.n_bl,
+                    )
                 )
             ).scalar_one_or_none()
 
@@ -256,6 +259,7 @@ async def _save_manifests_to_db(
             new_nave = header.nave
 
             if existing:
+                existing.updated_at = datetime.utcnow()
                 # Only update if almacen, puerto_desembarque or nave changed
                 if (
                     existing.almacen == new_almacen
@@ -267,7 +271,6 @@ async def _save_manifests_to_db(
                 existing.almacen = new_almacen
                 existing.puerto_desembarque = new_puerto
                 existing.nave = new_nave
-                existing.despacho = despacho
                 existing.nro_manifiesto = header.nro_manifiesto or ""
                 existing.sentido = header.sentido
                 existing.fecha_arribo_zarpe = _parse_datetime(header.fecha_arribo_zarpe)
@@ -570,12 +573,15 @@ async def list_registros(
     archimp_rows = await siscon_db.execute(query, params)
     despachos = archimp_rows.fetchall()
 
-    # Get all saved records from manifiesto_bl
+    # Get all saved records from manifiesto_bl, indexed by despacho and by n_bl
     saved_result = await db.execute(select(ManifiestoBL))
     saved_records = saved_result.scalars().all()
     saved_by_despacho: dict[str, list] = {}
+    saved_by_nbl: dict[str, list] = {}
     for rec in saved_records:
         saved_by_despacho.setdefault(rec.despacho or "", []).append(rec)
+        if rec.n_bl:
+            saved_by_nbl.setdefault(rec.n_bl, []).append(rec)
 
     items: list[RegistroItem] = []
     found_count = 0
@@ -590,7 +596,15 @@ async def list_registros(
         nombre_importador = (row[5] or "").strip() or None
         eta_str = eta.strftime("%Y-%m-%d") if eta else None
 
+        # Try by despacho first, then fall back to matching by BL number
         records = saved_by_despacho.get(despacho, [])
+        if not records and bl:
+            queries = _split_bl_queries(bl)
+            for q in queries:
+                matches = saved_by_nbl.get(q, [])
+                if matches:
+                    records = matches
+                    break
         if records:
             for rec in records:
                 items.append(RegistroItem(
@@ -692,8 +706,11 @@ async def download_registros_excel(
     saved_result = await db.execute(select(ManifiestoBL))
     saved_records = saved_result.scalars().all()
     saved_by_despacho: dict[str, list] = {}
+    saved_by_nbl: dict[str, list] = {}
     for rec in saved_records:
         saved_by_despacho.setdefault(rec.despacho or "", []).append(rec)
+        if rec.n_bl:
+            saved_by_nbl.setdefault(rec.n_bl, []).append(rec)
 
     # Build Excel
     wb = openpyxl.Workbook()
@@ -735,6 +752,13 @@ async def download_registros_excel(
         eta_str = eta.strftime("%Y-%m-%d") if eta else ""
 
         records = saved_by_despacho.get(despacho, [])
+        if not records and bl:
+            queries = _split_bl_queries(bl)
+            for q in queries:
+                matches = saved_by_nbl.get(q, [])
+                if matches:
+                    records = matches
+                    break
         if records:
             for rec in records:
                 values = [

@@ -212,7 +212,10 @@ async def save_to_db(db: AsyncSession, despacho: str, manifests: list[dict]) -> 
 
             existing = (
                 await db.execute(
-                    select(ManifiestoBL).where(ManifiestoBL.n_bl == bl["n_bl"])
+                    select(ManifiestoBL).where(
+                        ManifiestoBL.despacho == despacho,
+                        ManifiestoBL.n_bl == bl["n_bl"],
+                    )
                 )
             ).scalar_one_or_none()
 

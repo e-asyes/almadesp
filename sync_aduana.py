@@ -262,17 +262,17 @@ async def upsert_manifests(db: AsyncSession, despacho: str, manifests: list[dict
             new_puerto = bl.get("puerto_desembarque")
             new_nave = header.get("nave")
 
-            # Check if exists
+            # Check if exists by despacho + n_bl
             row = (await db.execute(
-                text("SELECT id, almacen, puerto_desembarque, nave FROM manifiesto_bl WHERE n_bl = :n_bl"),
-                {"n_bl": n_bl},
+                text("SELECT id, almacen, puerto_desembarque, nave FROM manifiesto_bl WHERE despacho = :despacho AND n_bl = :n_bl"),
+                {"despacho": despacho, "n_bl": n_bl},
             )).first()
 
             if row:
                 # Always update the timestamp
                 await db.execute(
-                    text("UPDATE manifiesto_bl SET updated_at = NOW() WHERE n_bl = :n_bl"),
-                    {"n_bl": n_bl},
+                    text("UPDATE manifiesto_bl SET updated_at = NOW() WHERE despacho = :despacho AND n_bl = :n_bl"),
+                    {"despacho": despacho, "n_bl": n_bl},
                 )
                 # Skip full update if nothing changed
                 if row.almacen == new_almacen and row.puerto_desembarque == new_puerto and row.nave == new_nave:
@@ -282,7 +282,6 @@ async def upsert_manifests(db: AsyncSession, despacho: str, manifests: list[dict
                         almacen = :almacen,
                         puerto_desembarque = :puerto_desembarque,
                         nave = :nave,
-                        despacho = :despacho,
                         nro_manifiesto = :nro_manifiesto,
                         sentido = :sentido,
                         fecha_arribo_zarpe = :fecha_arribo_zarpe,
@@ -291,13 +290,13 @@ async def upsert_manifests(db: AsyncSession, despacho: str, manifests: list[dict
                         fecha_aceptacion = :fecha_aceptacion,
                         total_peso = :total_peso,
                         updated_at = NOW()
-                    WHERE n_bl = :n_bl
+                    WHERE despacho = :despacho AND n_bl = :n_bl
                 """), {
+                    "despacho": despacho,
                     "n_bl": n_bl,
                     "almacen": new_almacen,
                     "puerto_desembarque": new_puerto,
                     "nave": new_nave,
-                    "despacho": despacho,
                     "nro_manifiesto": header.get("nro_manifiesto") or "",
                     "sentido": header.get("sentido"),
                     "fecha_arribo_zarpe": parse_datetime_val(header.get("fecha_arribo_zarpe")),
