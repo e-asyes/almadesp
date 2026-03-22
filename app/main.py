@@ -131,8 +131,8 @@ tr:hover td{background:#f8faff}
 <!-- TAB 1: Consulta -->
 <div id="panel-consulta" class="panel active">
   <div class="filters">
-    <div><label>Fecha Desde</label><input id="fDesde" type="date" value="2026-03-13"></div>
-    <div><label>Fecha Hasta</label><input id="fHasta" type="date" value="2026-03-20"></div>
+    <div><label>Fecha Desde</label><input id="fDesde" type="date" value="__TODAY__"></div>
+    <div><label>Fecha Hasta</label><input id="fHasta" type="date" value="__PLUS7__"></div>
     <div><label>Puerto</label><select id="fPuerto"><option value="">Todos los puertos</option></select></div>
     <div><button class="btn btn-primary" id="btnConsultar" onclick="runBatch()">Consultar Aduana</button></div>
   </div>
