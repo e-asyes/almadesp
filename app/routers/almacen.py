@@ -573,15 +573,29 @@ async def list_registros(
     archimp_rows = await siscon_db.execute(query, params)
     despachos = archimp_rows.fetchall()
 
-    # Get all saved records from manifiesto_bl, indexed by despacho and by n_bl
-    saved_result = await db.execute(select(ManifiestoBL))
-    saved_records = saved_result.scalars().all()
+    # Collect despacho IDs and split BL queries for targeted lookup
+    despacho_ids: list[str] = []
+    all_bl_queries: set[str] = set()
+    for row in despachos:
+        despacho_ids.append(row[0])
+        bl = (row[1] or "").strip()
+        if bl:
+            for q in _split_bl_queries(bl):
+                all_bl_queries.add(q)
+
+    # Only fetch manifiesto_bl records matching these despachos or BLs
     saved_by_despacho: dict[str, list] = {}
     saved_by_nbl: dict[str, list] = {}
-    for rec in saved_records:
-        saved_by_despacho.setdefault(rec.despacho or "", []).append(rec)
-        if rec.n_bl:
-            saved_by_nbl.setdefault(rec.n_bl, []).append(rec)
+    if despacho_ids:
+        saved_result = await db.execute(
+            select(ManifiestoBL).where(
+                ManifiestoBL.despacho.in_(despacho_ids) | ManifiestoBL.n_bl.in_(all_bl_queries)
+            )
+        )
+        for rec in saved_result.scalars().all():
+            saved_by_despacho.setdefault(rec.despacho or "", []).append(rec)
+            if rec.n_bl:
+                saved_by_nbl.setdefault(rec.n_bl, []).append(rec)
 
     items: list[RegistroItem] = []
     found_count = 0
@@ -703,14 +717,28 @@ async def download_registros_excel(
     archimp_rows = await siscon_db.execute(query, params)
     despachos = archimp_rows.fetchall()
 
-    saved_result = await db.execute(select(ManifiestoBL))
-    saved_records = saved_result.scalars().all()
+    # Collect despacho IDs and split BL queries for targeted lookup
+    despacho_ids: list[str] = []
+    all_bl_queries: set[str] = set()
+    for row in despachos:
+        despacho_ids.append(row[0])
+        bl = (row[1] or "").strip()
+        if bl:
+            for q in _split_bl_queries(bl):
+                all_bl_queries.add(q)
+
     saved_by_despacho: dict[str, list] = {}
     saved_by_nbl: dict[str, list] = {}
-    for rec in saved_records:
-        saved_by_despacho.setdefault(rec.despacho or "", []).append(rec)
-        if rec.n_bl:
-            saved_by_nbl.setdefault(rec.n_bl, []).append(rec)
+    if despacho_ids:
+        saved_result = await db.execute(
+            select(ManifiestoBL).where(
+                ManifiestoBL.despacho.in_(despacho_ids) | ManifiestoBL.n_bl.in_(all_bl_queries)
+            )
+        )
+        for rec in saved_result.scalars().all():
+            saved_by_despacho.setdefault(rec.despacho or "", []).append(rec)
+            if rec.n_bl:
+                saved_by_nbl.setdefault(rec.n_bl, []).append(rec)
 
     # Build Excel
     wb = openpyxl.Workbook()
