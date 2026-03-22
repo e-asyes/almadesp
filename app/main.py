@@ -428,10 +428,11 @@ async function loadRecords(){
     const params=new URLSearchParams({fecha_desde:desde,fecha_hasta:hasta});
     if(puerto)params.set('puerto',puerto);
     const r=await authFetch('/almacen/registros?'+params);
+    if(!r.ok){const t=await r.text();throw new Error(r.status+': '+(t.substring(0,200)))}
     const data=await r.json();
     allRecords=data.items;
     renderRecords();
-  }catch(e){tbody.innerHTML='<tr><td colspan="15" class="empty">Error cargando datos</td></tr>'}
+  }catch(e){tbody.innerHTML='<tr><td colspan="15" class="empty">Error: '+e.message+'</td></tr>'}
 }
 let recSortCol='',recSortDir='asc';
 function renderRecords(){

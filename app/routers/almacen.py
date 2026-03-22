@@ -573,24 +573,15 @@ async def list_registros(
     archimp_rows = await siscon_db.execute(query, params)
     despachos = archimp_rows.fetchall()
 
-    # Collect despacho IDs and split BL queries for targeted lookup
-    despacho_ids: list[str] = []
-    all_bl_queries: set[str] = set()
-    for row in despachos:
-        despacho_ids.append(row[0])
-        bl = (row[1] or "").strip()
-        if bl:
-            for q in _split_bl_queries(bl):
-                all_bl_queries.add(q)
+    # Collect despacho IDs for targeted lookup
+    despacho_ids = [row[0] for row in despachos]
 
-    # Only fetch manifiesto_bl records matching these despachos or BLs
+    # Fetch manifiesto_bl records matching these despachos
     saved_by_despacho: dict[str, list] = {}
     saved_by_nbl: dict[str, list] = {}
     if despacho_ids:
         saved_result = await db.execute(
-            select(ManifiestoBL).where(
-                ManifiestoBL.despacho.in_(despacho_ids) | ManifiestoBL.n_bl.in_(all_bl_queries)
-            )
+            select(ManifiestoBL).where(ManifiestoBL.despacho.in_(despacho_ids))
         )
         for rec in saved_result.scalars().all():
             saved_by_despacho.setdefault(rec.despacho or "", []).append(rec)
@@ -717,23 +708,13 @@ async def download_registros_excel(
     archimp_rows = await siscon_db.execute(query, params)
     despachos = archimp_rows.fetchall()
 
-    # Collect despacho IDs and split BL queries for targeted lookup
-    despacho_ids: list[str] = []
-    all_bl_queries: set[str] = set()
-    for row in despachos:
-        despacho_ids.append(row[0])
-        bl = (row[1] or "").strip()
-        if bl:
-            for q in _split_bl_queries(bl):
-                all_bl_queries.add(q)
+    despacho_ids = [row[0] for row in despachos]
 
     saved_by_despacho: dict[str, list] = {}
     saved_by_nbl: dict[str, list] = {}
     if despacho_ids:
         saved_result = await db.execute(
-            select(ManifiestoBL).where(
-                ManifiestoBL.despacho.in_(despacho_ids) | ManifiestoBL.n_bl.in_(all_bl_queries)
-            )
+            select(ManifiestoBL).where(ManifiestoBL.despacho.in_(despacho_ids))
         )
         for rec in saved_result.scalars().all():
             saved_by_despacho.setdefault(rec.despacho or "", []).append(rec)
