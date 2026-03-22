@@ -151,8 +151,8 @@ tr:hover td{background:#f8faff}
 <!-- TAB 2: Registros -->
 <div id="panel-registros" class="panel">
   <div class="filters">
-    <div><label>Fecha Desde</label><input id="rDesde" type="date" value="2026-03-13"></div>
-    <div><label>Fecha Hasta</label><input id="rHasta" type="date" value="2026-03-20"></div>
+    <div><label>Fecha Desde</label><input id="rDesde" type="date"></div>
+    <div><label>Fecha Hasta</label><input id="rHasta" type="date"></div>
     <div><label>Puerto</label><select id="rPuerto"><option value="">Todos los puertos</option></select></div>
     <div><button class="btn btn-primary" onclick="loadRecords()">Buscar</button></div>
     <div><button class="btn btn-success" onclick="downloadExcel()">Descargar Excel</button></div>
@@ -173,8 +173,8 @@ tr:hover td{background:#f8faff}
 <!-- TAB 3: Gestion Registros -->
 <div id="panel-gestion" class="panel">
   <div class="filters">
-    <div><label>Fecha Desde</label><input id="gDesde" type="date" value="2026-03-13"></div>
-    <div><label>Fecha Hasta</label><input id="gHasta" type="date" value="2026-03-20"></div>
+    <div><label>Fecha Desde</label><input id="gDesde" type="date"></div>
+    <div><label>Fecha Hasta</label><input id="gHasta" type="date"></div>
     <div><label>Puerto</label><select id="gPuerto"><option value="">Todos los puertos</option></select></div>
     <div><button class="btn btn-primary" onclick="loadGestionRecords()">Buscar</button></div>
     <div><button class="btn btn-success" onclick="downloadExcelG()">Descargar Excel</button></div>
@@ -274,6 +274,10 @@ async function initApp(){
     document.getElementById('headerUser').textContent=currentUsername;
     document.getElementById('btnLogout').style.display='inline-block';
     document.getElementById('btnLogin').style.display='none';
+    const today=new Date(),plus7=new Date(today);plus7.setDate(today.getDate()+7);
+    const todayStr=today.toISOString().slice(0,10),plus7Str=plus7.toISOString().slice(0,10);
+    document.getElementById('rDesde').value=todayStr;document.getElementById('rHasta').value=plus7Str;
+    document.getElementById('gDesde').value=todayStr;document.getElementById('gHasta').value=plus7Str;
     populatePorts('fPuerto');populatePorts('rPuerto');populatePorts('gPuerto');
     await loadAlmacenesList();
     await checkAduanaEnabled();

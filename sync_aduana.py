@@ -5,6 +5,10 @@ Standalone script to sync Aduana manifest data for upcoming maritime arrivals.
 Queries siscon DB for despachos arriving in the next 7 days, consults Aduana
 (isidora.aduana.cl) for each BL, and upserts results into Azure PostgreSQL.
 
+Phase 2: Re-queries Aduana for rows that have n_bl but are missing almacen,
+updating almacen, nro_manifiesto, fecha_arribo_zarpe, cia_naviera,
+fecha_emision_manifiesto, and puerto_desembarque.
+
 Designed for cron:
   0 6 * * * cd /path/to/almadesp && python sync_aduana.py
 """
@@ -265,7 +269,12 @@ async def upsert_manifests(db: AsyncSession, despacho: str, manifests: list[dict
             )).first()
 
             if row:
-                # Skip if nothing changed
+                # Always update the timestamp
+                await db.execute(
+                    text("UPDATE manifiesto_bl SET updated_at = NOW() WHERE n_bl = :n_bl"),
+                    {"n_bl": n_bl},
+                )
+                # Skip full update if nothing changed
                 if row.almacen == new_almacen and row.puerto_desembarque == new_puerto and row.nave == new_nave:
                     continue
                 await db.execute(text("""
@@ -327,6 +336,124 @@ async def upsert_manifests(db: AsyncSession, despacho: str, manifests: list[dict
     return inserted, updated
 
 
+# ── Phase 2: Fill missing almacen from Aduana ────────────────────────────────
+
+
+async def fill_missing_almacen():
+    """Find rows in manifiesto_bl with n_bl but no almacen, query Aduana, and update missing fields."""
+    logger.info("=" * 70)
+    logger.info("FASE 2 - Buscar datos faltantes (almacen, manifiesto, etc.)")
+    logger.info("=" * 70)
+
+    # 1. Get rows with n_bl but without almacen
+    async with AzureSession() as db:
+        result = await db.execute(text("""
+            SELECT id, n_bl, despacho
+            FROM manifiesto_bl
+            WHERE n_bl IS NOT NULL AND TRIM(n_bl) <> ''
+              AND (almacen IS NULL OR TRIM(almacen) = '')
+        """))
+        pending_rows = result.fetchall()
+
+    if not pending_rows:
+        logger.info("No hay registros pendientes (todos tienen almacen).")
+        return
+
+    logger.info("Encontrados %d registros sin almacen con n_bl", len(pending_rows))
+
+    total_updated = 0
+    total_errors = 0
+    total_not_found = 0
+
+    # 2. Query Aduana for each n_bl and update missing fields
+    async with AzureSession() as db:
+        for i, row in enumerate(pending_rows, 1):
+            row_id = row[0]
+            n_bl = row[1].strip()
+            despacho = row[2] or ""
+
+            queries = split_bl(n_bl)
+            row_updated = False
+
+            for q in queries:
+                manifests, error = await query_aduana(q)
+
+                if error:
+                    if error == "Not found":
+                        logger.debug("[%d/%d] id=%d BL=%s -> no encontrado en Aduana", i, len(pending_rows), row_id, q)
+                    else:
+                        logger.warning("[%d/%d] id=%d BL=%s -> error: %s", i, len(pending_rows), row_id, q, error)
+                        total_errors += 1
+                    continue
+
+                # Find the matching BL in the manifest results
+                for manifest in manifests:
+                    header = manifest["header"]
+                    for bl_detail in manifest["bls"]:
+                        bl_n = bl_detail.get("n_bl")
+                        if not bl_n:
+                            continue
+
+                        # Match by exact n_bl or by partial match
+                        if bl_n == n_bl or bl_n in n_bl or n_bl in bl_n:
+                            new_almacen = bl_detail.get("almacen")
+                            new_puerto = bl_detail.get("puerto_desembarque")
+                            new_nro_manifiesto = header.get("nro_manifiesto")
+                            new_fecha_arribo = parse_datetime_val(header.get("fecha_arribo_zarpe"))
+                            new_cia_naviera = header.get("cia_naviera")
+                            new_fecha_emision = parse_date(header.get("fecha_emision_manifiesto"))
+                            new_nave = header.get("nave")
+
+                            await db.execute(text("""
+                                UPDATE manifiesto_bl SET
+                                    almacen = COALESCE(:almacen, almacen),
+                                    nro_manifiesto = COALESCE(:nro_manifiesto, nro_manifiesto),
+                                    fecha_arribo_zarpe = COALESCE(:fecha_arribo_zarpe, fecha_arribo_zarpe),
+                                    cia_naviera = COALESCE(:cia_naviera, cia_naviera),
+                                    fecha_emision_manifiesto = COALESCE(:fecha_emision_manifiesto, fecha_emision_manifiesto),
+                                    puerto_desembarque = COALESCE(:puerto_desembarque, puerto_desembarque),
+                                    nave = COALESCE(:nave, nave),
+                                    updated_at = NOW()
+                                WHERE id = :id
+                            """), {
+                                "id": row_id,
+                                "almacen": new_almacen,
+                                "nro_manifiesto": new_nro_manifiesto or "",
+                                "fecha_arribo_zarpe": new_fecha_arribo,
+                                "cia_naviera": new_cia_naviera,
+                                "fecha_emision_manifiesto": new_fecha_emision,
+                                "puerto_desembarque": new_puerto,
+                                "nave": new_nave,
+                            })
+                            total_updated += 1
+                            row_updated = True
+
+                            logger.info(
+                                "[%d/%d] id=%d ACTUALIZADO  Almacen: %s  Nave: %s  BL: %s",
+                                i, len(pending_rows), row_id,
+                                new_almacen or "-", new_nave or "-", n_bl,
+                            )
+                            break
+                    if row_updated:
+                        break
+                if row_updated:
+                    break
+
+            if not row_updated:
+                total_not_found += 1
+                logger.info("[%d/%d] id=%d NO ENCONTRADO  BL: %s", i, len(pending_rows), row_id, n_bl[:60])
+
+        await db.commit()
+
+    logger.info("-" * 70)
+    logger.info("FASE 2 - Resumen")
+    logger.info("  Pendientes:       %d", len(pending_rows))
+    logger.info("  Actualizados:     %d", total_updated)
+    logger.info("  No encontrados:   %d", total_not_found)
+    logger.info("  Errores:          %d", total_errors)
+    logger.info("-" * 70)
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 
@@ -358,6 +485,12 @@ async def main():
 
     if not despachos:
         logger.info("No se encontraron despachos para el rango.")
+        # Still run phase 2 even if no new despachos
+        await fill_missing_almacen()
+        elapsed = time.monotonic() - start
+        logger.info("=" * 70)
+        logger.info("SYNC ADUANA - Duracion total: %.1f s", elapsed)
+        logger.info("=" * 70)
         return
 
     logger.info("Encontrados %d despachos con BL", len(despachos))
@@ -417,17 +550,23 @@ async def main():
 
         await db.commit()
 
-    # 3. Summary
-    elapsed = time.monotonic() - start
-    logger.info("=" * 70)
-    logger.info("SYNC ADUANA - Resumen")
+    # 3. Summary of first phase
+    logger.info("-" * 70)
+    logger.info("SYNC ADUANA - Resumen Fase 1 (SISCON)")
     logger.info("  Total despachos:  %d", len(despachos))
     logger.info("  Encontrados:      %d", total_found)
     logger.info("  No encontrados:   %d", total_not_found)
     logger.info("  Insertados:       %d", total_inserted)
     logger.info("  Actualizados:     %d", total_updated)
     logger.info("  Errores:          %d", total_errors)
-    logger.info("  Duracion:         %.1f s", elapsed)
+    logger.info("-" * 70)
+
+    # 4. Phase 2: Fill missing data for rows with n_bl but no almacen
+    await fill_missing_almacen()
+
+    elapsed = time.monotonic() - start
+    logger.info("=" * 70)
+    logger.info("SYNC ADUANA - Duracion total: %.1f s", elapsed)
     logger.info("=" * 70)
 
 

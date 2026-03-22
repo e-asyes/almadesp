@@ -189,7 +189,10 @@ def parse_decimal(val):
     if not val:
         return None
     try:
-        return Decimal(val.strip())
+        d = Decimal(val.strip())
+        if abs(d) >= Decimal("1000000000"):
+            return None
+        return d
     except (InvalidOperation, ValueError):
         return None
 
@@ -218,6 +221,7 @@ async def save_to_db(db: AsyncSession, despacho: str, manifests: list[dict]) -> 
             new_nave = header.get("nave")
 
             if existing:
+                existing.updated_at = datetime.now()
                 if (
                     existing.almacen == new_almacen
                     and existing.puerto_desembarque == new_puerto
@@ -235,6 +239,7 @@ async def save_to_db(db: AsyncSession, despacho: str, manifests: list[dict]) -> 
                 existing.fecha_emision_manifiesto = parse_date(header.get("fecha_emision_manifiesto"))
                 existing.fecha_aceptacion = parse_date(bl.get("fecha_aceptacion"))
                 existing.total_peso = parse_decimal(bl.get("total_peso"))
+                existing.updated_at = datetime.now()
                 count += 1
             else:
                 record = ManifiestoBL(
@@ -250,6 +255,7 @@ async def save_to_db(db: AsyncSession, despacho: str, manifests: list[dict]) -> 
                     fecha_aceptacion=parse_date(bl.get("fecha_aceptacion")),
                     puerto_desembarque=new_puerto,
                     total_peso=parse_decimal(bl.get("total_peso")),
+                    updated_at=datetime.now(),
                 )
                 db.add(record)
                 count += 1
