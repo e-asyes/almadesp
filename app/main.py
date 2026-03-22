@@ -72,6 +72,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .btn-success{background:#10b981;color:#fff}.btn-success:hover{background:#059669}
 .btn-warning{background:#f59e0b;color:#fff}.btn-warning:hover{background:#d97706}
 .btn:disabled{opacity:.5;cursor:not-allowed}
+.sortable{cursor:pointer;user-select:none;position:relative;padding-right:16px!important}
+.sortable:hover{background:#1e2a4a}
+.sortable::after{content:'\\2195';position:absolute;right:4px;opacity:.4;font-size:.7rem}
+.sortable.asc::after{content:'\\2191';opacity:1}
+.sortable.desc::after{content:'\\2193';opacity:1}
 .stats{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .stat{background:#fff;border-radius:10px;padding:14px 20px;flex:1;min-width:130px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .stat .num{font-size:1.5rem;font-weight:700}.stat .lbl{font-size:.73rem;color:#888;margin-top:2px}
@@ -161,15 +166,16 @@ tr:hover td{background:#f8faff}
     <div><button class="btn btn-primary" onclick="loadRecords()">Buscar</button></div>
     <div><button class="btn btn-warning" id="btnSearchNotFound" onclick="searchNotFound()">Buscar No Encontrados</button></div>
     <div><button class="btn btn-success" onclick="downloadExcel()">Descargar Excel</button></div>
-    <div style="border-left:1px solid #ddd;padding-left:12px"><label>Filtrar</label><input id="search" type="text" placeholder="BL / Despacho..." style="width:160px"></div>
+    <div style="border-left:1px solid #ddd;padding-left:12px"><label>Filtrar</label><input id="search" type="text" placeholder="BL / Despacho / Importador..." style="width:180px"></div>
+    <div><label>Nave</label><input id="searchVessel" type="text" placeholder="Nombre nave..." style="width:150px"></div>
     <div><label>Estado</label><select id="filterStatus"><option value="">Todos</option><option value="found">Encontrados</option><option value="not_found">No Encontrados</option></select></div>
   </div>
   <div class="stats" id="recStats"></div>
-  <div class="table-wrap"><table>
+  <div class="table-wrap"><table id="recTable">
     <thead><tr>
-      <th></th><th>Estado</th><th>Despacho</th><th>Importador</th><th>Puerto</th><th>ETA</th><th>Nave/Vehiculo</th>
-      <th>BL (Conocimiento)</th><th>Nro BL (Aduana)</th><th>Nave (Aduana)</th><th>Almacen</th>
-      <th>Puerto Destino</th><th>Cia Naviera</th><th>Peso</th><th>Actualizado</th>
+      <th></th><th class="sortable" data-col="status">Estado</th><th class="sortable" data-col="despacho">Despacho</th><th class="sortable" data-col="nombre_importador">Importador</th><th class="sortable" data-col="puerto">Puerto</th><th class="sortable" data-col="eta">ETA</th><th class="sortable" data-col="nombre_vehiculo">Nave/Vehiculo</th>
+      <th class="sortable" data-col="numero_conocimiento">BL (Conocimiento)</th><th class="sortable" data-col="n_bl">Nro BL (Aduana)</th><th class="sortable" data-col="nave">Nave (Aduana)</th><th class="sortable" data-col="almacen">Almacen</th>
+      <th class="sortable" data-col="puerto_desembarque">Puerto Destino</th><th class="sortable" data-col="cia_naviera">Cia Naviera</th><th class="sortable" data-col="total_peso">Peso</th><th class="sortable" data-col="updated_at">Actualizado</th>
     </tr></thead>
     <tbody id="recBody"><tr><td colspan="15" class="empty">Seleccione fechas y presione "Buscar"</td></tr></tbody>
   </table></div>
@@ -427,14 +433,27 @@ async function loadRecords(){
     renderRecords();
   }catch(e){tbody.innerHTML='<tr><td colspan="15" class="empty">Error cargando datos</td></tr>'}
 }
+let recSortCol='',recSortDir='asc';
 function renderRecords(){
   const q=document.getElementById('search').value.toLowerCase();
+  const v=document.getElementById('searchVessel').value.toLowerCase();
   const fS=document.getElementById('filterStatus').value;
   let data=allRecords.filter(r=>{
     if(q&&!((r.n_bl||'').toLowerCase().includes(q)||(r.despacho||'').toLowerCase().includes(q)||(r.numero_conocimiento||'').toLowerCase().includes(q)||(r.nombre_importador||'').toLowerCase().includes(q)))return false;
+    if(v&&!((r.nombre_vehiculo||'').toLowerCase().includes(v)||(r.nave||'').toLowerCase().includes(v)))return false;
     if(fS&&r.status!==fS)return false;
     return true;
   });
+  if(recSortCol){
+    data.sort((a,b)=>{
+      let va=a[recSortCol]||'',vb=b[recSortCol]||'';
+      if(typeof va==='number'&&typeof vb==='number') return recSortDir==='asc'?va-vb:vb-va;
+      va=String(va).toLowerCase();vb=String(vb).toLowerCase();
+      if(va<vb)return recSortDir==='asc'?-1:1;
+      if(va>vb)return recSortDir==='asc'?1:-1;
+      return 0;
+    });
+  }
   const found=data.filter(r=>r.status==='found').length;
   const notFound=data.filter(r=>r.status==='not_found').length;
   document.getElementById('recStats').innerHTML=`
@@ -498,7 +517,18 @@ async function downloadExcel(){
   }catch(e){alert('Error descargando Excel: '+e.message);}
 }
 document.getElementById('search').addEventListener('input',renderRecords);
+document.getElementById('searchVessel').addEventListener('input',renderRecords);
 document.getElementById('filterStatus').addEventListener('change',renderRecords);
+document.querySelectorAll('#recTable .sortable').forEach(th=>{
+  th.addEventListener('click',()=>{
+    const col=th.dataset.col;
+    if(recSortCol===col){recSortDir=recSortDir==='asc'?'desc':'asc';}
+    else{recSortCol=col;recSortDir='asc';}
+    document.querySelectorAll('#recTable .sortable').forEach(h=>{h.classList.remove('asc','desc');});
+    th.classList.add(recSortDir);
+    renderRecords();
+  });
+});
 
 // ── Gestion Registros tab (Tab 3) ──
 let gestionRecords=[];
