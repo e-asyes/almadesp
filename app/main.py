@@ -70,6 +70,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .btn-primary{background:#3b82f6;color:#fff}.btn-primary:hover{background:#2563eb}
 .btn-secondary{background:#6b7280;color:#fff}.btn-secondary:hover{background:#4b5563}
 .btn-success{background:#10b981;color:#fff}.btn-success:hover{background:#059669}
+.btn-warning{background:#f59e0b;color:#fff}.btn-warning:hover{background:#d97706}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .stats{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .stat{background:#fff;border-radius:10px;padding:14px 20px;flex:1;min-width:130px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
@@ -158,6 +159,7 @@ tr:hover td{background:#f8faff}
     <div><label>Fecha Hasta</label><input id="rHasta" type="date" value="__PLUS7__"></div>
     <div><label>Puerto</label><select id="rPuerto"><option value="">Todos los puertos</option></select></div>
     <div><button class="btn btn-primary" onclick="loadRecords()">Buscar</button></div>
+    <div><button class="btn btn-warning" id="btnSearchNotFound" onclick="searchNotFound()">Buscar No Encontrados</button></div>
     <div><button class="btn btn-success" onclick="downloadExcel()">Descargar Excel</button></div>
     <div style="border-left:1px solid #ddd;padding-left:12px"><label>Filtrar</label><input id="search" type="text" placeholder="BL / Despacho..." style="width:160px"></div>
     <div><label>Estado</label><select id="filterStatus"><option value="">Todos</option><option value="found">Encontrados</option><option value="not_found">No Encontrados</option></select></div>
@@ -462,6 +464,22 @@ function renderRecords(){
       <td>${r.total_peso||'-'}</td>
       <td>${r.updated_at?new Date(r.updated_at).toLocaleString('es-CL'):'-'}</td></tr>`;
   }).join('');
+}
+async function searchNotFound(){
+  const desde=document.getElementById('rDesde').value;
+  const hasta=document.getElementById('rHasta').value;
+  const puerto=document.getElementById('rPuerto').value;
+  const btn=document.getElementById('btnSearchNotFound');
+  const notFoundItems=allRecords.filter(r=>r.status==='not_found');
+  if(!notFoundItems.length){alert('No hay despachos sin encontrar.');return}
+  btn.disabled=true;btn.textContent='Buscando en Aduana...';
+  try{
+    const params=new URLSearchParams({fecha_desde:desde,fecha_hasta:hasta});
+    if(puerto)params.set('puerto',puerto);
+    await authFetch('/almacen/batch-update?'+params);
+    await loadRecords();
+  }catch(e){alert('Error: '+e.message)}
+  btn.disabled=false;btn.textContent='Buscar No Encontrados';
 }
 async function downloadExcel(){
   const desde=document.getElementById('rDesde').value;
